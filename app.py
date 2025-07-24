@@ -28,6 +28,10 @@ async def render_result(query, result_json):
         with st.expander("JSON Bundle View"):
             st.json(result_json)
 
+async def render_error(query, error_message):
+    with st.expander("Query Error"):
+        st.error(f"Query: `{query}`")
+        st.error(f"Error: {error_message}")
 
 
 async def sidebar(deps):
@@ -108,7 +112,8 @@ async def query_fhir(ctx: RunContext[HapiTools], query: str) -> str:
 
         return f"Query successful. Here are the results:\n\n{markdown_result}\n\nThe user will be shown this data as a table after your response; you may reference and summarize it, but do not repeat the data in your response."
     except Exception as e:
-        return f"Query failed: {str(e)}"
+        await call_render_func("render_error", {"query": query, "error_message": str(e)})
+        return f"Query failed: {str(e)}. The user has been shown the error in the app, but you may also summarize it here if you wish."
 
 
 
@@ -126,7 +131,7 @@ agent_configs = {
 }
 
 app_config = AppConfig(
-    rendering_functions=[render_result],
+    rendering_functions=[render_result, render_error],
     page_icon="🔥",
     sidebar_collapsed=False
     )
