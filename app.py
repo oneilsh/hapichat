@@ -4,7 +4,7 @@ from pydantic_ai import Agent, RunContext
 import requests
 import os
 from resources import strings
-from fhiry import FlattenFhir, Fhiry
+# from fhiry import FlattenFhir, Fhiry
 import pandas as pd
 import streamlit as st
 import json
@@ -15,16 +15,34 @@ dotenv.load_dotenv(override=True)
 logger = get_logger()
 
 
+def flatten_dict(d):
+    def safe_stringify_lists(obj):
+        if isinstance(obj, list):
+            return json.dumps(obj)
+        return obj
+    
+    if "resourceType" in d and d["resourceType"] == "Bundle" and "entry" in d:
+        df = pd.json_normalize(d, "entry")
+    else:
+        df = pd.json_normalize(d)
+
+    for col in df.columns:
+        if df[col].apply(lambda x: isinstance(x, (list, dict))).any():
+            df[col] = df[col].apply(safe_stringify_lists)
+        # else:
+        #     df[col] = df[col].astype(str)
+    return df
+
+
 async def render_result(query, result_json):
     with st.expander("Query Result"):
-        result_df = stringify_complex_columns(Fhiry().process_bundle_dict(result_json))
-        result_flat = FlattenFhir(result_json).flattened
+        #result_df = stringify_complex_columns(Fhiry().process_bundle_dict(result_json))
+        result_df = flatten_dict(result_json)
+        #result_flat = FlattenFhir(result_json).flattened
         st.markdown(f"Query: `{query}`", unsafe_allow_html=True)
 
         with st.expander("DataFrame View"):
             st.write(result_df)
-        with st.expander("Flattened View"):
-            st.write(result_flat)
         with st.expander("JSON Bundle View"):
             st.json(result_json)
 
@@ -55,17 +73,6 @@ async def sidebar():
     st.button("Edit System Prompt", disabled = st.session_state.lock_widgets, on_click=get_new_system_prompt, use_container_width=True)
 
 
-
-def stringify_complex_columns(df):
-    df = df.copy()
-    for col in df.columns:
-        # If any value in the column is a list, dict, or not a str/int/float/None, convert to JSON string
-        if df[col].apply(lambda x: isinstance(x, (list, dict))).any():
-            df[col] = df[col].apply(lambda x: json.dumps(x, indent=2) if isinstance(x, (list, dict)) else x)
-        # Optionally: stringify anything that's not a basic scalar
-        else:
-            df[col] = df[col].apply(lambda x: str(x) if not isinstance(x, (str, int, float, type(None))) else x)
-    return df
 
 
 class HapiTools():
@@ -121,11 +128,11 @@ async def query_fhir(ctx: RunContext[HapiTools], query: str) -> str:
             render_in_chat("render_empty", {"query": full_query})
             return f"No results found for query: `{full_query}`."
 
-        result_df = stringify_complex_columns(Fhiry().process_bundle_dict(result_bundle))
-
         # Convert DataFrame to markdown for better display in Streamlit
         await render_in_chat("render_result", {"query": full_query, "result_json": result_bundle})
 
+        # yes, this code is duplicative and needs cleanup around query/full_query and flattening
+        result_df = flatten_dict(result_bundle)
         markdown_result = result_df.to_markdown(index=False)
 
         return f"Query successful. Here are the results:\n\n{markdown_result}\n\nThe user will be shown this data as a table after your response; you may reference and summarize it, but do not repeat the data in your response."
