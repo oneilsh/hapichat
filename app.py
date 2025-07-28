@@ -57,7 +57,7 @@ async def render_empty(query):
 
 
 async def sidebar():
-    st.markdown("DataFrame and 'flattened for LLM' result views are provided by the `fhiry` package, with expansion of complex columns in dataframes.")
+    st.markdown("A chatbot that can query hapi.fhir.org for FHIR data.")
     deps = current_deps()
     def get_new_system_prompt():
         @st.dialog(title = "Edit System Prompt", width = "large")
