@@ -108,20 +108,20 @@ async def query_fhir(ctx: RunContext[HapiTools], query: str) -> str:
     """
     Query the FHIR server with a specific query string. For example, query = "Patient?family=Smith"
     """
+    full_query = ctx.deps.get_full_url_for_query(query) # for logging purposes
     try:
         #st.session_state.logger.info("Running query")
         result_bundle = ctx.deps.exec_query(query)
         result_df = stringify_complex_columns(Fhiry().process_bundle_dict(result_bundle))
 
         # Convert DataFrame to markdown for better display in Streamlit
-        full_query = ctx.deps.get_full_url_for_query(query)
         await render_in_chat("render_result", {"query": full_query, "result_json": result_bundle})
 
         markdown_result = result_df.to_markdown(index=False)
 
         return f"Query successful. Here are the results:\n\n{markdown_result}\n\nThe user will be shown this data as a table after your response; you may reference and summarize it, but do not repeat the data in your response."
     except Exception as e:
-        await render_in_chat("render_error", {"query": query, "error_message": str(e)})
+        await render_in_chat("render_error", {"query": full_query, "error_message": str(e)})
         return f"Query failed: {str(e)}. The user has been shown the error in the app, but you may also summarize it here if you wish."
 
 
