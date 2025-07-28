@@ -1,5 +1,5 @@
 import streamlit as st
-from opaiui.app import AgentConfig, AppConfig, AgentState, serve, call_render_func, get_logger
+from opaiui.app import AgentConfig, AppConfig, AgentState, serve, render_in_chat, get_logger, current_deps
 from pydantic_ai import Agent, RunContext
 import requests
 import os
@@ -34,9 +34,9 @@ async def render_error(query, error_message):
         st.error(f"Error: {error_message}")
 
 
-async def sidebar(deps):
+async def sidebar():
     st.markdown("DataFrame and 'flattened for LLM' result views are provided by the `fhiry` package, with expansion of complex columns in dataframes.")
-
+    deps = current_deps()
     def get_new_system_prompt():
         @st.dialog(title = "Edit System Prompt", width = "large")
         def edit_system_prompt():
@@ -73,14 +73,22 @@ class HapiTools():
         if self.state.hapi_url.endswith("/"):
             self.state.hapi_url = self.state.hapi_url[:-1]
 
+    def get_full_url_for_query(self, query: str) -> str:
+        """
+        Constructs the full URL for a given FHIR query.
+        """
+        return f"{self.state.hapi_url}/{query}"
+
     def exec_query(self, query: str):
-        url = f"{self.state.hapi_url}/{query}"
+        url = self.get_full_url_for_query(query)
+        logger.info(f"Executing query: {url}")
         response = requests.get(url)
+        logger.info(f"Response status: {response.status_code}")
         if response.status_code == 200:
             result = response.json()
             return result
         else:
-            raise Exception(f"Error fetching data: {response.status_code} - {response.text}")
+            raise Exception(f"Error fetching data: {url} - {response.status_code} - {response.text}")
         
 
 
@@ -106,13 +114,14 @@ async def query_fhir(ctx: RunContext[HapiTools], query: str) -> str:
         result_df = stringify_complex_columns(Fhiry().process_bundle_dict(result_bundle))
 
         # Convert DataFrame to markdown for better display in Streamlit
-        await call_render_func("render_result", {"query": query, "result_json": result_bundle})
+        full_query = ctx.deps.get_full_url_for_query(query)
+        await render_in_chat("render_result", {"query": full_query, "result_json": result_bundle})
 
         markdown_result = result_df.to_markdown(index=False)
 
         return f"Query successful. Here are the results:\n\n{markdown_result}\n\nThe user will be shown this data as a table after your response; you may reference and summarize it, but do not repeat the data in your response."
     except Exception as e:
-        await call_render_func("render_error", {"query": query, "error_message": str(e)})
+        await render_in_chat("render_error", {"query": query, "error_message": str(e)})
         return f"Query failed: {str(e)}. The user has been shown the error in the app, but you may also summarize it here if you wish."
 
 
