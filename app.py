@@ -33,6 +33,10 @@ async def render_error(query, error_message):
         st.error(f"Query: `{query}`")
         st.error(f"Error: {error_message}")
 
+async def render_empty(query):
+    with st.expander("Empty Result"):
+        st.info(f"No results found for query: `{query}`.")
+
 
 async def sidebar():
     st.markdown("DataFrame and 'flattened for LLM' result views are provided by the `fhiry` package, with expansion of complex columns in dataframes.")
@@ -112,6 +116,11 @@ async def query_fhir(ctx: RunContext[HapiTools], query: str) -> str:
     try:
         #st.session_state.logger.info("Running query")
         result_bundle = ctx.deps.exec_query(query)
+        # if the result is a bundle with total 0, return a message
+        if isinstance(result_bundle, dict) and result_bundle.get("resourceType") == "Bundle" and result_bundle.get("total") == 0:
+            render_in_chat("render_empty", {"query": full_query})
+            return f"No results found for query: `{full_query}`."
+
         result_df = stringify_complex_columns(Fhiry().process_bundle_dict(result_bundle))
 
         # Convert DataFrame to markdown for better display in Streamlit
@@ -140,7 +149,7 @@ agent_configs = {
 }
 
 app_config = AppConfig(
-    rendering_functions=[render_result, render_error],
+    rendering_functions=[render_result, render_error, render_empty],
     page_icon="🔥",
     sidebar_collapsed=False
     )
